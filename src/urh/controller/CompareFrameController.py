@@ -1268,9 +1268,7 @@ class CompareFrameController(QWidget):
         f = (
             1
             if self.ui.cbProtoView.currentIndex() == 0
-            else 4
-            if self.ui.cbProtoView.currentIndex() == 1
-            else 8
+            else 4 if self.ui.cbProtoView.currentIndex() == 1 else 8
         )
         for i in range(row_start, row_end):
             message = self.proto_analyzer.messages[i]

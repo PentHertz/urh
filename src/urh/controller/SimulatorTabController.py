@@ -325,9 +325,9 @@ class SimulatorTabController(QWidget):
             self.update_vertical_table_header()
 
     def refresh_message_table(self):
-        self.simulator_message_table_model.protocol.messages[
-            :
-        ] = self.simulator_config.get_all_messages()
+        self.simulator_message_table_model.protocol.messages[:] = (
+            self.simulator_config.get_all_messages()
+        )
         self.simulator_message_table_model.update()
 
         if isinstance(self.active_item, SimulatorMessage):

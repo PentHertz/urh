@@ -60,11 +60,7 @@ class FormatFinder(object):
             n = (
                 8
                 if sync_len >= 8
-                else 4
-                if sync_len >= 4
-                else 1
-                if sync_len >= 1
-                else 0
+                else 4 if sync_len >= 4 else 1 if sync_len >= 1 else 0
             )
 
         for i, value in enumerate(self.sync_ends):

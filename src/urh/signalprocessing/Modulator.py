@@ -196,9 +196,9 @@ class Modulator(object):
 
         for i, bit in enumerate(self.display_bits):
             if bit == "0":
-                y[
-                    i * self.samples_per_symbol : (i + 1) * self.samples_per_symbol
-                ] = -1.0
+                y[i * self.samples_per_symbol : (i + 1) * self.samples_per_symbol] = (
+                    -1.0
+                )
 
         x = np.arange(0, n).astype(np.int64)
 

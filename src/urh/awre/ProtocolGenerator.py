@@ -234,9 +234,9 @@ class ProtocolGenerator(object):
         self.sequence_numbers[mt] += self.sequence_number_increment
 
         for checksum_label in checksum_labels:
-            msg[
-                checksum_label.start : checksum_label.end
-            ] = checksum_label.calculate_checksum_for_message(msg, False)
+            msg[checksum_label.start : checksum_label.end] = (
+                checksum_label.calculate_checksum_for_message(msg, False)
+            )
 
         self.protocol.messages.append(msg)
 

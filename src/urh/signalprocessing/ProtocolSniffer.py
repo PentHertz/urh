@@ -92,9 +92,9 @@ class ProtocolSniffer(ProtocolAnalyzer, QObject):
             n = len(self.__buffer) - self.__current_buffer_index - 1
             logger.warning("Buffer of protocol sniffer is full")
 
-        self.__buffer[
-            self.__current_buffer_index : self.__current_buffer_index + n
-        ] = data[:n]
+        self.__buffer[self.__current_buffer_index : self.__current_buffer_index + n] = (
+            data[:n]
+        )
         self.__current_buffer_index += n
 
     def __clear_buffer(self):

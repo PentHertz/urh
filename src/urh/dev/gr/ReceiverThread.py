@@ -82,9 +82,9 @@ class ReceiverThread(AbstractBaseThread):
                         else:
                             self.stop("Receiving Buffer is full.")
                             return
-                    self.data[
-                        self.current_index : self.current_index + num_samples
-                    ] = tmp
+                    self.data[self.current_index : self.current_index + num_samples] = (
+                        tmp
+                    )
                     self.current_index += num_samples
                     rcvd = b""
                 except ValueError:

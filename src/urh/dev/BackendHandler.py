@@ -227,6 +227,7 @@ class BackendHandler(object):
     def __harogic_native_enabled(self) -> bool:
         try:
             from urh.dev.native.lib import harogic
+
             return True
         except ImportError:
             return False
@@ -344,7 +345,7 @@ class BackendHandler(object):
             backends.add(Backends.native)
 
         if devname.lower().startswith("harogic") and self.__harogic_native_enabled:
-            supports_rx, supports_tx = True, False # RX only for now
+            supports_rx, supports_tx = True, False  # RX only for now
             backends.add(Backends.native)
 
         if (

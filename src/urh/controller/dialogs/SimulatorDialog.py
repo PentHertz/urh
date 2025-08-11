@@ -103,9 +103,9 @@ class SimulatorDialog(QDialog):
             )
             self.ui.graphicsViewPreview.setScene(self.scene_manager.scene)
         else:
-            self.device_settings_rx_widget = (
-                self.sniff_settings_widget
-            ) = self.scene_manager = None
+            self.device_settings_rx_widget = self.sniff_settings_widget = (
+                self.scene_manager
+            ) = None
             self.ui.tabWidgetSimulatorSettings.setTabEnabled(1, False)
             self.ui.graphicsViewPreview.hide()
             self.ui.btnSaveRX.hide()

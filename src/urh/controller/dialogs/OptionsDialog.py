@@ -413,9 +413,9 @@ class OptionsDialog(QDialog):
         if self.old_default_view != self.ui.comboBoxDefaultView.currentIndex():
             changed_values["default_view"] = self.ui.comboBoxDefaultView.currentIndex()
         if self.old_num_sending_repeats != self.ui.spinBoxNumSendingRepeats.value():
-            changed_values[
-                "num_sending_repeats"
-            ] = self.ui.spinBoxNumSendingRepeats.value()
+            changed_values["num_sending_repeats"] = (
+                self.ui.spinBoxNumSendingRepeats.value()
+            )
 
         settings.write("default_view", self.ui.comboBoxDefaultView.currentIndex())
         settings.write("num_sending_repeats", self.ui.spinBoxNumSendingRepeats.value())

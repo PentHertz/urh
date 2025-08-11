@@ -26,9 +26,9 @@ class TestAWRERealProtocols(AWRETestCase):
                 enocean_protocol.messages.append(
                     Message.from_plain_bits_str(line.replace("\n", ""))
                 )
-                enocean_protocol.messages[
-                    -1
-                ].message_type = enocean_protocol.default_message_type
+                enocean_protocol.messages[-1].message_type = (
+                    enocean_protocol.default_message_type
+                )
 
         ff = FormatFinder(enocean_protocol.messages)
         ff.perform_iteration()

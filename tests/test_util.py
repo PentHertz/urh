@@ -127,7 +127,7 @@ class TestUtil(QtTestCase):
             )
             if len(filecontents) >= minfilelen:  # ok, min file length passed
                 if (
-                    filecontents.find(b"\x0A\x0D\x0D\x0A") >= 0
+                    filecontents.find(b"\x0a\x0d\x0d\x0a") >= 0
                 ):  # ok, seems that SHB was written
                     if (
                         filecontents.find(

@@ -182,9 +182,9 @@ class SpectrogramTest(unittest.TestCase):
         modulator1.carrier_freq_hz = channel1_freq
         modulator2.carrier_freq_hz = channel2_freq
         modulator3.carrier_freq_hz = -channel2_freq
-        modulator1.sample_rate = (
-            modulator2.sample_rate
-        ) = modulator3.sample_rate = sample_rate
+        modulator1.sample_rate = modulator2.sample_rate = modulator3.sample_rate = (
+            sample_rate
+        )
         data1 = modulator1.modulate(channel1_data)
         data2 = modulator2.modulate(channel2_data)
         data3 = modulator3.modulate(channel3_data)

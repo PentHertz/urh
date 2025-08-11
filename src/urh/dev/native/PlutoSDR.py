@@ -65,7 +65,9 @@ class PlutoSDR(Device):
         return True
 
     @classmethod
-    def prepare_sync_receive(cls, ctrl_connection: Connection, dev_parameters: OrderedDict):
+    def prepare_sync_receive(
+        cls, ctrl_connection: Connection, dev_parameters: OrderedDict
+    ):
         ctrl_connection.send("Initializing PlutoSDR..")
         ret = plutosdr.setup_rx(cls.SYNC_RX_CHUNK_SIZE)
         return ret

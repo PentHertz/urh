@@ -66,7 +66,9 @@ class BladeRF(Device):
         return True
 
     @classmethod
-    def prepare_sync_receive(cls, ctrl_connection: Connection, dev_parameters: OrderedDict):
+    def prepare_sync_receive(
+        cls, ctrl_connection: Connection, dev_parameters: OrderedDict
+    ):
         ctrl_connection.send("Initializing BladeRF..")
         ret = bladerf.prepare_sync()
         return ret

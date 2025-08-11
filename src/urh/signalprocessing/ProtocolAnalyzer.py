@@ -587,9 +587,11 @@ class ProtocolAnalyzer(object):
             raise ValueError("Unknown view type {}".format(view_type))
 
         indices = [
-            msg.decoded_bits_str.find(bit_pattern)
-            if use_decoded
-            else msg.plain_bits_str.find(bit_pattern)
+            (
+                msg.decoded_bits_str.find(bit_pattern)
+                if use_decoded
+                else msg.plain_bits_str.find(bit_pattern)
+            )
             for msg in self.messages
         ]
 

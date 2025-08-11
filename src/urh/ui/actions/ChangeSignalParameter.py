@@ -26,16 +26,12 @@ class ChangeSignalParameter(QUndoCommand):
         fmt2 = (
             "d"
             if isinstance(self.orig_value, int)
-            else ".4n"
-            if isinstance(self.orig_value, float)
-            else "s"
+            else ".4n" if isinstance(self.orig_value, float) else "s"
         )
         fmt3 = (
             "d"
             if isinstance(parameter_value, int)
-            else ".4n"
-            if isinstance(parameter_value, float)
-            else "s"
+            else ".4n" if isinstance(parameter_value, float) else "s"
         )
         signal_name = signal.name[:10] + "..." if len(signal.name) > 10 else signal.name
 

@@ -267,11 +267,7 @@ class InsertSinePlugin(SignalEditorPlugin):
         factor = (
             10**-9
             if suffix == "n"
-            else 10**-6
-            if suffix == "µ"
-            else 10**-3
-            if suffix == "m"
-            else 1
+            else 10**-6 if suffix == "µ" else 10**-3 if suffix == "m" else 1
         )
         time_val = t * factor
 

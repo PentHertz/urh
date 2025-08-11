@@ -130,7 +130,9 @@ class Device(object):
         raise NotImplementedError("Overwrite this method in subclass!")
 
     @classmethod
-    def prepare_sync_receive(cls, ctrl_connection: Connection, dev_parameters: OrderedDict):
+    def prepare_sync_receive(
+        cls, ctrl_connection: Connection, dev_parameters: OrderedDict
+    ):
         raise NotImplementedError("Overwrite this method in subclass!")
 
     @classmethod

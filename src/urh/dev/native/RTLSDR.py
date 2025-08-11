@@ -39,7 +39,9 @@ class RTLSDR(Device):
         return ret == 0
 
     @classmethod
-    def prepare_sync_receive(cls, ctrl_connection: Connection, dev_parameters: OrderedDict):
+    def prepare_sync_receive(
+        cls, ctrl_connection: Connection, dev_parameters: OrderedDict
+    ):
         ret = rtlsdr.reset_buffer()
         ctrl_connection.send("RESET_BUFFER:" + str(ret))
         return ret

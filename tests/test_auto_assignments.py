@@ -20,9 +20,9 @@ class TestAutoAssignments(unittest.TestCase):
                 self.protocol.messages.append(
                     Message.from_plain_bits_str(line.replace("\n", ""))
                 )
-                self.protocol.messages[
-                    -1
-                ].message_type = self.protocol.default_message_type
+                self.protocol.messages[-1].message_type = (
+                    self.protocol.default_message_type
+                )
 
         # Assign participants
         alice = Participant("Alice", "A")
