@@ -52,8 +52,15 @@ jobs:
       - name: Get version
         id: version
         run: |
-          # Extract version - try multiple patterns
-          VERSION=$(python3 -c "import re; content=open('setup.py').read(); match=re.search(r'version\s*=\s*[\"']([^\"']+)[\"']', content); print(match.group(1) if match else '2.9.8')")
+          # Extract version using Python with proper quote escaping
+          VERSION=$(python3 << 'PYEOF'
+import re
+with open('setup.py') as f:
+    content = f.read()
+match = re.search(r'version\s*=\s*["\x27]([^"\x27]+)["\x27]', content)
+print(match.group(1) if match else '2.9.8')
+PYEOF
+)
           DATE=$(date +%Y%m%d)
           COMMIT=$(git rev-parse --short HEAD)
           DEB_VERSION="${VERSION}+git${DATE}.${COMMIT}"
@@ -132,8 +139,18 @@ jobs:
           echo "[+] Creating Debian package"
           ARCH=$(dpkg --print-architecture)
           
-          # Extract version properly
-          VERSION=$(python3 -c "import re; content=open('setup.py').read(); match=re.search(r'version\s*=\s*[\"']([^\"']+)[\"']', content); print(match.group(1) if match else '2.9.8')" 2>/dev/null || echo "2.9.8")
+          # Extract version properly using Python heredoc
+          VERSION=$(python3 << 'PYVER'
+import re
+try:
+    with open('setup.py') as f:
+        content = f.read()
+    match = re.search(r'version\s*=\s*["\x27]([^"\x27]+)["\x27]', content)
+    print(match.group(1) if match else '2.9.8')
+except:
+    print('2.9.8')
+PYVER
+)
           
           PKG_NAME="urh-penthertz_${ARCH}_${DEB_VERSION}"
           PKG_DIR="/tmp/pkg"
