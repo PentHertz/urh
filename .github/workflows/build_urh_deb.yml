@@ -1,33 +1,70 @@
-name: Build URH DEB Package
+name: Build URH Multi-Arch
 
 on:
   workflow_dispatch:
+    inputs:
+      architectures:
+        description: 'Architectures (amd64, arm64, riscv64 or all)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - amd64
+          - arm64
+          - riscv64
 
 jobs:
-  build-urh-amd64:
+  build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: 
+          - amd64
+          - arm64
+          - riscv64
+      fail-fast: false
     
     steps:
-      - name: Checkout URH repository
+      - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Get version info
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64,linux/riscv64
+      
+      - name: Determine platform
+        id: platform
+        run: |
+          case "${{ matrix.arch }}" in
+            amd64)
+              echo "platform=linux/amd64" >> $GITHUB_OUTPUT
+              ;;
+            arm64)
+              echo "platform=linux/arm64" >> $GITHUB_OUTPUT
+              ;;
+            riscv64)
+              echo "platform=linux/riscv64" >> $GITHUB_OUTPUT
+              ;;
+          esac
+      
+      - name: Get version
         id: version
         run: |
           VERSION=$(grep "version=" setup.py | head -1 | sed "s/.*version=['\"]\\([^'\"]*\\)['\"].*/\\1/" || echo "2.9.4")
           DATE=$(date +%Y%m%d)
           COMMIT=$(git rev-parse --short HEAD)
           DEB_VERSION="${VERSION}+git${DATE}.${COMMIT}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "deb_version=${DEB_VERSION}" >> $GITHUB_OUTPUT
       
-      - name: Build URH in Docker
+      - name: Build URH for ${{ matrix.arch }}
         run: |
           cat > build-urh.sh << 'BUILDSCRIPT'
           #!/bin/bash
           set -e
           
-          echo "=== Building URH the proven way ==="
+          echo "=== Building URH for $(uname -m) ==="
           
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -49,14 +86,21 @@ jobs:
           pip install --only-binary=all pyqt5
           pip install psutil
           
-          echo "[+] Building URH"
-          python3 setup.py install || {
-              echo "[+] Retrying without native extensions"
+          echo "[+] Building URH (attempt 1: with Cython extensions)"
+          if python3 setup.py install 2>&1 | tee /tmp/build.log; then
+              echo "[+] Build successful with native extensions"
+              BUILD_TYPE="native"
+          else
+              echo "[!] Cython build failed, retrying without native extensions"
               export URH_NO_NATIVE_EXTENSIONS=1
               python3 setup.py install
-          }
+              BUILD_TYPE="no-native"
+          fi
           
           deactivate
+          
+          echo "[+] URH installed: $BUILD_TYPE extensions"
+          ls -la "$URH_VENV_DIR/bin/urh"
           
           echo "[+] Creating Debian package"
           ARCH=$(dpkg --print-architecture)
@@ -66,28 +110,54 @@ jobs:
           mkdir -p "${PKG_DIR}/DEBIAN"
           mkdir -p "${PKG_DIR}/opt"
           mkdir -p "${PKG_DIR}/usr/sbin"
+          mkdir -p "${PKG_DIR}/usr/share/applications"
           mkdir -p "${PKG_DIR}/usr/share/doc/urh-penthertz"
           
+          echo "[+] Copying virtual environment"
           cp -a "$URH_VENV_DIR" "${PKG_DIR}/opt/"
           
+          echo "[+] Creating wrapper script"
           cat > "${PKG_DIR}/usr/sbin/urh" << 'WRAPPER'
           #!/bin/bash
           URH_VENV_DIR="/opt/urh-venv"
+          
           if [ ! -d "$URH_VENV_DIR" ]; then
-              echo "Error: URH virtual environment not found"
+              echo "Error: URH virtual environment not found at $URH_VENV_DIR"
               exit 1
           fi
+          
+          if [ ! -f "$URH_VENV_DIR/bin/urh" ]; then
+              echo "Error: URH not found in virtual environment"
+              exit 1
+          fi
+          
           if [ -z "$XDG_RUNTIME_DIR" ]; then
               export XDG_RUNTIME_DIR="/tmp/runtime-$(whoami)"
               mkdir -p "$XDG_RUNTIME_DIR"
               chmod 700 "$XDG_RUNTIME_DIR"
           fi
+          
           source "$URH_VENV_DIR/bin/activate"
           exec "$URH_VENV_DIR/bin/urh" "$@"
           WRAPPER
           
           chmod +x "${PKG_DIR}/usr/sbin/urh"
           
+          echo "[+] Creating desktop entry"
+          cat > "${PKG_DIR}/usr/share/applications/urh.desktop" << 'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Universal Radio Hacker
+          GenericName=Wireless Protocol Analyzer
+          Comment=Investigate wireless protocols with URH
+          Exec=urh %F
+          Icon=urh
+          Terminal=false
+          Categories=Network;Utility;Development;
+          MimeType=application/x-urh;
+          DESKTOP
+          
+          echo "[+] Creating control file"
           cat > "${PKG_DIR}/DEBIAN/control" << CONTROL
           Package: urh-penthertz
           Version: ${DEB_VERSION}
@@ -95,32 +165,65 @@ jobs:
           Priority: optional
           Architecture: ${ARCH}
           Depends: python3-venv, python3 (>= 3.10), libxml2, libxslt1.1, zlib1g
+          Conflicts: urh
+          Provides: urh
+          Replaces: urh
           Maintainer: PentHertz <contact@penthertz.com>
-          Description: Universal Radio Hacker (PentHertz Fork)
-           URH is a complete suite for wireless protocol investigation.
-           This package contains URH built from the PentHertz/HydraSDR fork.
+          Description: Universal Radio Hacker (PentHertz/HydraSDR Fork)
+           URH is a complete suite for wireless protocol investigation with native
+           device support for Software Defined Radios.
+           .
+           This package contains URH in a self-contained Python virtual environment,
+           built from the PentHertz/HydraSDR fork.
+           .
+           Build type: ${BUILD_TYPE} extensions
+          Homepage: https://github.com/PentHertz/urh
           CONTROL
           
+          echo "[+] Creating copyright"
           cat > "${PKG_DIR}/usr/share/doc/urh-penthertz/copyright" << 'COPYRIGHT'
           Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
           Upstream-Name: urh
+          Upstream-Contact: PentHertz <contact@penthertz.com>
           Source: https://github.com/PentHertz/urh
           
           Files: *
           Copyright: 2016-2024 Johannes Pohl and contributors
+                     2024 PentHertz
           License: GPL-3+
           COPYRIGHT
           
+          echo "[+] Building package"
           dpkg-deb --build "${PKG_DIR}" "/output/${PKG_NAME}.deb"
           
-          echo "=== Package created ==="
+          echo "[+] Creating build info"
+          cat > "/output/BUILD_INFO_${ARCH}.txt" << BUILDINFO
+          URH Debian Package - Build Information
+          =======================================
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Architecture: ${ARCH} ($(uname -m))
+          Version: ${DEB_VERSION}
+          Build Type: ${BUILD_TYPE} extensions
+          Method: Virtual environment (the way that works!)
+          
+          Package: ${PKG_NAME}.deb
+          Size: $(du -h "/output/${PKG_NAME}.deb" | cut -f1)
+          
+          Installation:
+            sudo dpkg -i ${PKG_NAME}.deb
+            sudo apt-get install -f  # If dependencies needed
+          BUILDINFO
+          
+          echo "=== Build Complete ==="
           ls -lh /output/
+          cat "/output/BUILD_INFO_${ARCH}.txt"
           BUILDSCRIPT
           
           chmod +x build-urh.sh
           
           mkdir -p output
           docker run --rm \
+            --platform "${{ steps.platform.outputs.platform }}" \
             -v "$(pwd):/workspace:ro" \
             -v "$(pwd)/build-urh.sh:/build.sh:ro" \
             -v "$(pwd)/output:/output" \
@@ -131,10 +234,30 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: urh-penthertz-amd64-${{ steps.version.outputs.deb_version }}
-          path: output/*.deb
+          name: urh-penthertz-${{ matrix.arch }}-${{ steps.version.outputs.deb_version }}
+          path: |
+            output/*.deb
+            output/BUILD_INFO_*.txt
       
       - name: Show result
         run: |
-          echo "Package built successfully!"
+          echo "=== Build Complete for ${{ matrix.arch }} ==="
           ls -lh output/
+          echo ""
+          cat output/BUILD_INFO_*.txt
+  
+  summary:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Build Summary
+        run: |
+          echo "=== Multi-Architecture Build Complete ==="
+          echo ""
+          echo "Packages built for:"
+          echo "  - amd64"
+          echo "  - arm64"
+          echo "  - riscv64"
+          echo ""
+          echo "Download packages from the 'Artifacts' section above"
