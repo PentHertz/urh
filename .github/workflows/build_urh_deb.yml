@@ -215,6 +215,11 @@ jobs:
           echo "Architecture: $(dpkg --print-architecture)"
           echo "Working directory: $(pwd)"
           
+          # Unset any proxy configuration that might interfere
+          unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+          unset ftp_proxy FTP_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY
+          echo "Proxy variables unset"
+          
           # We should already be in /tmp/build (a writable copy)
           # Don't cd to /workspace as it's read-only!
           
@@ -237,6 +242,18 @@ jobs:
               libxml2-dev \
               libxslt1-dev \
               zlib1g-dev
+          
+          # Ensure numpy is available for setup.py
+          # (debian python3-numpy should already provide this)
+          python3 -c "import numpy; print(f'NumPy version: {numpy.__version__}')" || {
+              echo "WARNING: NumPy not available, installing via pip..."
+              pip3 install --break-system-packages numpy
+          }
+          
+          # Prevent setup.py from trying to download packages during build
+          # Use system-installed packages instead
+          export PIP_NO_BUILD_ISOLATION=1
+          export SETUPTOOLS_USE_DISTUTILS=stdlib
           
           # Build the package (we're already in the right directory)
           echo "=== Building Debian package ==="
