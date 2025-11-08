@@ -243,17 +243,19 @@ jobs:
               libxslt1-dev \
               zlib1g-dev
           
-          # Ensure numpy is available for setup.py
-          # (debian python3-numpy should already provide this)
-          python3 -c "import numpy; print(f'NumPy version: {numpy.__version__}')" || {
-              echo "WARNING: NumPy not available, installing via pip..."
-              pip3 install --break-system-packages numpy
-          }
-          
           # Prevent setup.py from trying to download packages during build
-          # Use system-installed packages instead
+          # When using PIP_NO_BUILD_ISOLATION, we need setuptools and numpy in the environment
+          echo "=== Preparing Python environment ==="
           export PIP_NO_BUILD_ISOLATION=1
           export SETUPTOOLS_USE_DISTUTILS=stdlib
+          
+          # Install required packages via pip (already installed via apt, but need them accessible)
+          pip3 install --break-system-packages setuptools wheel numpy || {
+              echo "WARNING: pip install failed, continuing with system packages..."
+          }
+          
+          # Verify packages are available
+          python3 -c "import setuptools; import numpy; print(f'setuptools: {setuptools.__version__}, numpy: {numpy.__version__}')"
           
           # Build the package (we're already in the right directory)
           echo "=== Building Debian package ==="
