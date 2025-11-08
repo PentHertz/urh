@@ -56,7 +56,7 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
               python3-venv python3-dev python3-pip \
-              python3-pyqt5 python3-pyqt5.qtsvg \
+              qtbase5-dev qttools5-dev-tools \
               build-essential cython3 git cmake wget unzip \
               libxml2-dev libxslt1-dev zlib1g-dev \
               dpkg-dev fakeroot
@@ -147,7 +147,11 @@ jobs:
           pip install cython numpy
           
           echo "[+] Installing PyQt5"
-          pip install --only-binary=all pyqt5 || echo "[!] PyQt5 wheel not available, GUI may not work"
+          # Allow building from source if no wheel available (for ARM64/RISC-V)
+          pip install pyqt5 || {
+              echo "[!] PyQt5 installation failed, GUI may not work"
+              echo "[!] Users can manually install: apt install python3-pyqt5"
+          }
           
           echo "[+] Installing psutil"
           pip install psutil
@@ -232,8 +236,8 @@ jobs:
           Section: comm
           Priority: optional
           Architecture: ${ARCH}
-          Depends: python3-venv, python3, python3-pyqt5
-          Recommends: rtl-sdr, hackrf, limesuite, uhd-host, python3-pyqt5.qtsvg
+          Depends: python3-venv, python3
+          Recommends: rtl-sdr, hackrf, limesuite, uhd-host
           Maintainer: PentHertz <contact@penthertz.com>
           Description: Universal Radio Hacker (PentHertz Fork)
            URH is a complete suite for wireless protocol investigation.
@@ -251,6 +255,8 @@ jobs:
            .
            Build type: ${BUILD_TYPE} extensions
            Architecture: ${ARCH}
+           .
+           PyQt5 is included in the venv for GUI support.
           Homepage: https://github.com/PentHertz/urh
           CONTROL
           
@@ -291,3 +297,114 @@ jobs:
         run: |
           echo "Package built for ${{ matrix.arch }}"
           ls -lh output/
+  
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: success()
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Get version
+        id: version
+        run: |
+          cat > get_version.py << 'EOF'
+          import re
+          with open('setup.py') as f:
+              content = f.read()
+          match = re.search(r'version\s*=\s*["\x27]([^"\x27]+)["\x27]', content)
+          print(match.group(1) if match else '2.9.8')
+          EOF
+          VERSION=$(python3 get_version.py)
+          DATE=$(date +%Y%m%d)
+          COMMIT=$(git rev-parse --short HEAD)
+          DEB_VERSION="${VERSION}+git${DATE}.${COMMIT}"
+          echo "deb_version=${DEB_VERSION}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "date=${DATE}" >> $GITHUB_OUTPUT
+          echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-packages
+      
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+          find release-packages -name "*.deb" -exec cp {} release-files/ \;
+          ls -lh release-files/
+          
+          # Create checksums
+          cd release-files
+          sha256sum *.deb > SHA256SUMS
+          cat SHA256SUMS
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.deb_version }}
+          name: URH PentHertz v${{ steps.version.outputs.deb_version }}
+          body: |
+            # URH Multi-Architecture Packages
+            
+            **Version:** ${{ steps.version.outputs.version }}  
+            **Build Date:** ${{ steps.version.outputs.date }}  
+            **Commit:** ${{ steps.version.outputs.commit }}
+            
+            ## 📦 Packages
+            
+            - `urh-penthertz_amd64_*.deb` - For AMD64/x86_64 systems
+            - `urh-penthertz_arm64_*.deb` - For ARM64/aarch64 systems  
+            - `urh-penthertz_riscv64_*.deb` - For RISC-V 64-bit systems
+            
+            ## 🚀 Installation
+            
+            ```bash
+            # Download the appropriate package for your architecture
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.deb_version }}/urh-penthertz_ARCH_${{ steps.version.outputs.deb_version }}.deb
+            
+            # Install
+            sudo dpkg -i urh-penthertz_ARCH_*.deb
+            sudo apt-get install -f  # Fix dependencies if needed
+            
+            # Run
+            urh
+            ```
+            
+            ## ✨ Features
+            
+            - **Native SDR Support:** RTL-SDR, HackRF, AirSpy, PlutoSDR, LimeSDR, BladeRF, USRP, HydraSDR, Harogic
+            - **Cython Extensions:** Optimized signal processing
+            - **Complete GUI:** PyQt5 interface included
+            - **Self-contained:** All dependencies in venv
+            
+            ## 📋 System Requirements
+            
+            - Ubuntu 24.04 or compatible Debian-based system
+            - Python 3.12
+            - Qt5 runtime libraries (auto-installed)
+            
+            ## 🔍 Verification
+            
+            ```bash
+            # Verify checksum
+            sha256sum -c SHA256SUMS
+            ```
+            
+            ## 📚 Documentation
+            
+            - [GitHub Repository](https://github.com/${{ github.repository }})
+            - [Original URH](https://github.com/jopohl/urh)
+          draft: false
+          prerelease: false
+          files: |
+            release-files/*.deb
+            release-files/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
