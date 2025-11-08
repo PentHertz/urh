@@ -215,6 +215,9 @@ jobs:
           echo "Architecture: $(dpkg --print-architecture)"
           echo "Working directory: $(pwd)"
           
+          # We should already be in /tmp/build (a writable copy)
+          # Don't cd to /workspace as it's read-only!
+          
           # Install debian packaging tools
           echo "=== Installing build dependencies ==="
           apt-get update
@@ -235,9 +238,8 @@ jobs:
               libxslt1-dev \
               zlib1g-dev
           
-          # Build the package
+          # Build the package (we're already in the right directory)
           echo "=== Building Debian package ==="
-          cd /workspace
           dpkg-buildpackage -b -us -uc -a$(dpkg --print-architecture)
           
           # Move packages to output
