@@ -249,10 +249,21 @@ jobs:
           export PIP_NO_BUILD_ISOLATION=1
           # Note: Don't set SETUPTOOLS_USE_DISTUTILS=stdlib - distutils removed in Python 3.12
           
+          # Force pip to work completely offline
+          export PIP_NO_INDEX=1
+          export PIP_NO_DEPENDENCIES=1
+          export PIP_IGNORE_INSTALLED=0
+          
           # Install required packages via pip (already installed via apt, but need them accessible)
-          pip3 install --break-system-packages setuptools wheel numpy || {
+          # Temporarily allow network for this installation only
+          (unset PIP_NO_INDEX PIP_NO_DEPENDENCIES && \
+           pip3 install --break-system-packages setuptools wheel numpy) || {
               echo "WARNING: pip install failed, continuing with system packages..."
           }
+          
+          # Re-enable offline mode for build
+          export PIP_NO_INDEX=1
+          export PIP_NO_DEPENDENCIES=1
           
           # Verify packages are available
           python3 -c "import setuptools; import numpy; print(f'setuptools: {setuptools.__version__}, numpy: {numpy.__version__}')"
