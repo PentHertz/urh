@@ -1,0 +1,540 @@
+name: Build URH Debian Packages in RF Swift
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'src/**'
+      - 'setup.py'
+      - '.github/workflows/build-urh-rfswift.yml'
+  workflow_dispatch:
+    inputs:
+      urh_branch:
+        description: 'URH branch to build'
+        required: false
+        default: 'master'
+      rfswift_tag:
+        description: 'RF Swift image tag'
+        required: false
+        default: 'sdrsa_devices'
+  schedule:
+    # Build weekly on Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+env:
+  URH_REPO: https://github.com/PentHertz/urh.git
+  RFSWIFT_IMAGE_BASE: penthertz/rfswift_noble
+
+jobs:
+  build-debian-packages:
+    name: Build URH .deb for ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64, riscv64]
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+          - arch: riscv64
+            platform: linux/riscv64
+    
+    steps:
+      - name: Checkout URH repository
+        uses: actions/checkout@v4
+        with:
+          repository: PentHertz/urh
+          ref: ${{ github.event.inputs.urh_branch || 'master' }}
+          fetch-depth: 0
+      
+      - name: Set up QEMU for multi-architecture builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.platform }}
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Get version information
+        id: version
+        run: |
+          if [ -f setup.py ]; then
+            VERSION=$(python3 setup.py --version 2>/dev/null || echo "2.9.4")
+          else
+            VERSION="2.9.4"
+          fi
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date +%Y%m%d)
+          DEB_VERSION="${VERSION}+git${BUILD_DATE}.${COMMIT_SHORT}"
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "commit=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
+          echo "commit_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "build_date=${BUILD_DATE}" >> $GITHUB_OUTPUT
+          echo "deb_version=${DEB_VERSION}" >> $GITHUB_OUTPUT
+          
+          echo "URH Version: ${VERSION}"
+          echo "Debian Version: ${DEB_VERSION}"
+          echo "Commit: ${COMMIT_SHORT}"
+      
+      - name: Create Debian packaging files
+        run: |
+          mkdir -p debian/source
+          
+          # debian/control
+          cat > debian/control << 'EOF'
+          Source: urh-penthertz
+          Section: comm
+          Priority: optional
+          Maintainer: PentHertz <contact@penthertz.com>
+          Build-Depends: debhelper-compat (= 13),
+                         dh-python,
+                         python3-all,
+                         python3-setuptools,
+                         python3-dev,
+                         cython3,
+                         python3-numpy,
+                         python3-psutil,
+                         python3-pyqt5,
+                         libxml2-dev,
+                         libxslt1-dev,
+                         zlib1g-dev
+          Standards-Version: 4.6.0
+          Homepage: https://github.com/PentHertz/urh
+          
+          Package: urh-penthertz
+          Architecture: any
+          Depends: ${python3:Depends},
+                   ${shlibs:Depends},
+                   ${misc:Depends},
+                   python3-numpy,
+                   python3-psutil,
+                   python3-pyqt5
+          Conflicts: urh
+          Provides: urh
+          Replaces: urh
+          Description: Universal Radio Hacker (PentHertz/HydraSDR Fork)
+           URH is a complete suite for wireless protocol investigation with
+           native device support for Software Defined Radios.
+           .
+           Features:
+            * Hardware interfaces for RTL-SDR, HackRF, BladeRF, USRP and more
+            * Easy demodulation of signals
+            * Assigning participants to keep overview of your data
+            * Customizable decodings to crack even sophisticated encodings
+            * Automatic reverse engineering of protocol fields
+            * Fuzzing component to test robustness of your implementation
+            * Modulation support to inject the data back into the system
+            * Simulation environment to perform stateful attacks
+           .
+           This is the PentHertz/HydraSDR fork with additional features and fixes.
+          EOF
+          
+          # debian/rules
+          cat > debian/rules << 'EOF'
+          #!/usr/bin/make -f
+          
+          export DH_VERBOSE = 1
+          export PYBUILD_NAME = urh
+          export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+          
+          %:
+            dh $@ --with python3 --buildsystem=pybuild
+          
+          override_dh_auto_clean:
+            dh_auto_clean
+            rm -rf build/
+            rm -rf src/urh.egg-info/
+            find . -name "*.pyc" -delete
+            find . -name "__pycache__" -type d -exec rm -rf {} + || true
+          
+          override_dh_auto_build:
+            python3 setup.py build || \
+              (export URH_NO_NATIVE_EXTENSIONS=1 && python3 setup.py build)
+          
+          override_dh_auto_install:
+            python3 setup.py install --root=debian/urh-penthertz --install-layout=deb
+          
+          override_dh_auto_test:
+            @echo "Skipping tests during package build"
+          EOF
+          
+          chmod +x debian/rules
+          
+          # debian/changelog
+          cat > debian/changelog << EOF
+          urh-penthertz (${{ steps.version.outputs.deb_version }}-1) unstable; urgency=medium
+          
+            * Automated build from PentHertz/HydraSDR fork
+            * Built in RF Swift environment (${{ matrix.arch }})
+            * Commit: ${{ steps.version.outputs.commit_full }}
+          
+           -- PentHertz <contact@penthertz.com>  $(date -R)
+          EOF
+          
+          # debian/compat
+          echo "13" > debian/compat
+          
+          # debian/source/format
+          echo "3.0 (quilt)" > debian/source/format
+          
+          # debian/copyright
+          cat > debian/copyright << 'EOF'
+          Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+          Upstream-Name: urh
+          Source: https://github.com/PentHertz/urh
+          
+          Files: *
+          Copyright: 2016-2024 URH Contributors
+          License: GPL-3.0+
+          
+          License: GPL-3.0+
+           This program is free software: you can redistribute it and/or modify
+           it under the terms of the GNU General Public License as published by
+           the Free Software Foundation, either version 3 of the License, or
+           (at your option) any later version.
+           .
+           This package is distributed in the hope that it will be useful,
+           but WITHOUT ANY WARRANTY; without even the implied warranty of
+           MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+           GNU General Public License for more details.
+           .
+           You should have received a copy of the GNU General Public License
+           along with this program. If not, see <https://www.gnu.org/licenses/>.
+          EOF
+          
+          echo "Debian packaging files created"
+          ls -la debian/
+      
+      - name: Create build script
+        run: |
+          cat > build-in-container.sh << 'BUILDSCRIPT'
+          #!/bin/bash
+          set -e
+          
+          echo "=== Building URH Debian package inside RF Swift container ==="
+          echo "Architecture: $(dpkg --print-architecture)"
+          echo "Working directory: $(pwd)"
+          
+          # Install debian packaging tools
+          echo "=== Installing build dependencies ==="
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              debhelper \
+              dh-python \
+              devscripts \
+              fakeroot \
+              build-essential \
+              python3-all \
+              python3-setuptools \
+              python3-dev \
+              cython3 \
+              python3-numpy \
+              python3-psutil \
+              python3-pyqt5 \
+              libxml2-dev \
+              libxslt1-dev \
+              zlib1g-dev
+          
+          # Build the package
+          echo "=== Building Debian package ==="
+          cd /workspace
+          dpkg-buildpackage -b -us -uc -a$(dpkg --print-architecture)
+          
+          # Move packages to output
+          echo "=== Collecting build artifacts ==="
+          mkdir -p /output
+          mv ../*.deb /output/ 2>/dev/null || true
+          mv ../*.buildinfo /output/ 2>/dev/null || true
+          mv ../*.changes /output/ 2>/dev/null || true
+          
+          # List output
+          echo "=== Build artifacts ==="
+          ls -lh /output/
+          
+          # Create build info
+          ARCH=$(dpkg --print-architecture)
+          cat > /output/BUILD_INFO_${ARCH}.txt << EOF
+          URH Debian Package - Build Information
+          =======================================
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Architecture: ${ARCH}
+          RF Swift Image: ${RFSWIFT_IMAGE}
+          Built in: RF Swift Docker Environment
+          
+          Package Files:
+          $(ls -lh /output/*.deb 2>/dev/null || echo "No .deb files found")
+          
+          System Information:
+          $(uname -a)
+          $(python3 --version)
+          $(dpkg --version | head -1)
+          EOF
+          
+          echo "=== Build complete ==="
+          cat /output/BUILD_INFO_${ARCH}.txt
+          BUILDSCRIPT
+          
+          chmod +x build-in-container.sh
+      
+      - name: Pull RF Swift Docker image
+        run: |
+          RFSWIFT_TAG="${{ github.event.inputs.rfswift_tag || 'sdrsa_devices' }}"
+          IMAGE="${{ env.RFSWIFT_IMAGE_BASE }}:${RFSWIFT_TAG}_${{ matrix.arch }}"
+          echo "Pulling RF Swift image: ${IMAGE}"
+          docker pull "${IMAGE}"
+      
+      - name: Build package in RF Swift container
+        run: |
+          RFSWIFT_TAG="${{ github.event.inputs.rfswift_tag || 'sdrsa_devices' }}"
+          IMAGE="${{ env.RFSWIFT_IMAGE_BASE }}:${RFSWIFT_TAG}_${{ matrix.arch }}"
+          
+          echo "Building in container: ${IMAGE}"
+          echo "Platform: ${{ matrix.platform }}"
+          
+          mkdir -p output
+          
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            -v "$(pwd):/workspace:ro" \
+            -v "$(pwd)/build-in-container.sh:/build.sh:ro" \
+            -v "$(pwd)/output:/output" \
+            -e RFSWIFT_IMAGE="${IMAGE}" \
+            -w /workspace \
+            "${IMAGE}" \
+            bash -c "cp -r /workspace /tmp/build && cd /tmp/build && bash /build.sh"
+      
+      - name: Verify package
+        run: |
+          echo "=== Verifying built packages ==="
+          ls -lh output/
+          
+          if [ -f output/*.deb ]; then
+            echo "=== Package information ==="
+            dpkg-deb --info output/*.deb
+            echo ""
+            echo "=== Package contents ==="
+            dpkg-deb --contents output/*.deb | head -20
+          else
+            echo "ERROR: No .deb file found!"
+            exit 1
+          fi
+      
+      - name: Rename package with architecture suffix
+        run: |
+          cd output
+          for deb in *.deb; do
+            if [ -f "$deb" ]; then
+              # Extract base name and add architecture
+              base=$(echo "$deb" | sed 's/_[^_]*\.deb$//')
+              new_name="${base}_${{ matrix.arch }}_${{ steps.version.outputs.deb_version }}.deb"
+              mv "$deb" "$new_name"
+              echo "Renamed: $deb -> $new_name"
+            fi
+          done
+          ls -lh
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: urh-deb-${{ matrix.arch }}
+          path: |
+            output/*.deb
+            output/*.buildinfo
+            output/*.changes
+            output/BUILD_INFO_*.txt
+          retention-days: 30
+          if-no-files-found: error
+      
+      - name: Generate checksums
+        run: |
+          cd output
+          sha256sum *.deb > SHA256SUMS
+          cat SHA256SUMS
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-debian-packages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: PentHertz/urh
+          fetch-depth: 0
+      
+      - name: Get version information
+        id: version
+        run: |
+          if [ -f setup.py ]; then
+            VERSION=$(python3 setup.py --version 2>/dev/null || echo "2.9.4")
+          else
+            VERSION="2.9.4"
+          fi
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date +%Y%m%d)
+          DEB_VERSION="${VERSION}+git${BUILD_DATE}.${COMMIT_SHORT}"
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "commit=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
+          echo "deb_version=${DEB_VERSION}" >> $GITHUB_OUTPUT
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find release-artifacts -name "*.deb" -exec cp {} release/ \;
+          find release-artifacts -name "BUILD_INFO_*.txt" -exec cp {} release/ \;
+          
+          cd release
+          sha256sum *.deb > SHA256SUMS
+          
+          # Create combined build info
+          cat > RELEASE_INFO.txt << EOF
+          URH Debian Packages - Release Information
+          ==========================================
+          
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          URH Version: ${{ steps.version.outputs.version }}
+          Debian Version: ${{ steps.version.outputs.deb_version }}
+          Commit: ${{ steps.version.outputs.commit }}
+          Repository: https://github.com/PentHertz/urh
+          
+          Built in RF Swift Docker Environment
+          Base Image: ${{ env.RFSWIFT_IMAGE_BASE }}
+          
+          Architectures Available:
+          ------------------------
+          - amd64 (x86_64)
+          - arm64 (aarch64)
+          - riscv64
+          
+          Installation Instructions:
+          --------------------------
+          
+          1. Download the appropriate .deb for your architecture:
+             wget https://github.com/PentHertz/urh/releases/download/<tag>/urh-penthertz_<arch>_<version>.deb
+          
+          2. Install the package:
+             sudo apt install ./urh-penthertz_<arch>_<version>.deb
+          
+          3. Or install with dependencies:
+             sudo dpkg -i urh-penthertz_<arch>_<version>.deb
+             sudo apt-get install -f
+          
+          4. Verify installation:
+             urh --version
+          
+          Verify Package Integrity:
+          -------------------------
+          sha256sum -c SHA256SUMS
+          
+          Package Files:
+          --------------
+          EOF
+          
+          ls -lh *.deb >> RELEASE_INFO.txt
+          
+          echo ""
+          echo "=== Release Assets ==="
+          ls -lh
+          cat RELEASE_INFO.txt
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.deb_version }}
+          name: URH Debian Packages v${{ steps.version.outputs.version }} (${{ steps.version.outputs.commit }})
+          body: |
+            # URH Debian Packages
+            
+            **Built in RF Swift Docker Environment** 🐳
+            
+            ## 📦 Available Packages
+            
+            - ✅ **amd64** (x86_64) - Intel/AMD 64-bit
+            - ✅ **arm64** (aarch64) - ARM 64-bit
+            - ✅ **riscv64** - RISC-V 64-bit
+            
+            ## 📥 Installation
+            
+            ```bash
+            # Download package for your architecture
+            wget https://github.com/PentHertz/urh/releases/download/v${{ steps.version.outputs.deb_version }}/urh-penthertz_<arch>_${{ steps.version.outputs.deb_version }}.deb
+            
+            # Install
+            sudo apt install ./urh-penthertz_<arch>_${{ steps.version.outputs.deb_version }}.deb
+            
+            # Or with dpkg
+            sudo dpkg -i urh-penthertz_<arch>_${{ steps.version.outputs.deb_version }}.deb
+            sudo apt-get install -f  # Fix dependencies if needed
+            ```
+            
+            ## 🔍 Verify Package
+            
+            ```bash
+            # Download checksums
+            wget https://github.com/PentHertz/urh/releases/download/v${{ steps.version.outputs.deb_version }}/SHA256SUMS
+            
+            # Verify
+            sha256sum -c SHA256SUMS
+            ```
+            
+            ## ℹ️ Build Information
+            
+            - **Version**: ${{ steps.version.outputs.version }}
+            - **Debian Version**: ${{ steps.version.outputs.deb_version }}
+            - **Commit**: ${{ steps.version.outputs.commit }}
+            - **Build Date**: $(date -u +"%Y-%m-%d")
+            - **Built with**: RF Swift Docker Images
+            - **Base Image**: `${{ env.RFSWIFT_IMAGE_BASE }}`
+            
+            ## 🐳 RF Swift Integration
+            
+            These packages are built inside RF Swift containers, ensuring compatibility with the RF Swift environment.
+            
+            ```dockerfile
+            # Use in Dockerfile
+            RUN wget https://github.com/PentHertz/urh/releases/download/v${{ steps.version.outputs.deb_version }}/urh-penthertz_amd64_${{ steps.version.outputs.deb_version }}.deb && \
+                apt install -y ./urh-penthertz_amd64_${{ steps.version.outputs.deb_version }}.deb
+            ```
+            
+            ## 📚 Documentation
+            
+            - Repository: https://github.com/PentHertz/urh
+            - RF Swift: https://github.com/PentHertz/rfswift
+            
+            ---
+            
+            **Note**: These packages conflict with the official `urh` package. Remove any existing URH installation before installing.
+          files: |
+            release/*.deb
+            release/SHA256SUMS
+            release/RELEASE_INFO.txt
+            release/BUILD_INFO_*.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Summary
+        run: |
+          echo "## 🎉 Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.version.outputs.deb_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Packages Built:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ amd64" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ arm64" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ riscv64" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📥 Download:" >> $GITHUB_STEP_SUMMARY
+          echo "https://github.com/PentHertz/urh/releases/tag/v${{ steps.version.outputs.deb_version }}" >> $GITHUB_STEP_SUMMARY
