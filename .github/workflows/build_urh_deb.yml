@@ -1,25 +1,14 @@
-name: Build URH Multi-Arch
+name: Build URH Multi-Arch Packages
 
 on:
   workflow_dispatch:
-    inputs:
-      architectures:
-        description: 'Architectures (amd64, arm64, riscv64 or all)'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - amd64
-          - arm64
-          - riscv64
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: 
+        arch:
           - amd64
           - arm64
           - riscv64
@@ -31,47 +20,37 @@ jobs:
       
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64,linux/riscv64
       
-      - name: Determine platform
+      - name: Set platform
         id: platform
         run: |
           case "${{ matrix.arch }}" in
-            amd64)
-              echo "platform=linux/amd64" >> $GITHUB_OUTPUT
-              ;;
-            arm64)
-              echo "platform=linux/arm64" >> $GITHUB_OUTPUT
-              ;;
-            riscv64)
-              echo "platform=linux/riscv64" >> $GITHUB_OUTPUT
-              ;;
+            amd64) echo "platform=linux/amd64" >> $GITHUB_OUTPUT ;;
+            arm64) echo "platform=linux/arm64" >> $GITHUB_OUTPUT ;;
+            riscv64) echo "platform=linux/riscv64" >> $GITHUB_OUTPUT ;;
           esac
       
       - name: Get version
         id: version
         run: |
-          # Extract version using Python with proper quote escaping
-          VERSION=$(python3 << 'PYEOF'
-import re
-with open('setup.py') as f:
-    content = f.read()
-match = re.search(r'version\s*=\s*["\x27]([^"\x27]+)["\x27]', content)
-print(match.group(1) if match else '2.9.8')
-PYEOF
-)
+          cat > get_version.py << 'EOF'
+          import re
+          with open('setup.py') as f:
+              content = f.read()
+          match = re.search(r'version\s*=\s*["\x27]([^"\x27]+)["\x27]', content)
+          print(match.group(1) if match else '2.9.8')
+          EOF
+          VERSION=$(python3 get_version.py)
           DATE=$(date +%Y%m%d)
           COMMIT=$(git rev-parse --short HEAD)
           DEB_VERSION="${VERSION}+git${DATE}.${COMMIT}"
           echo "deb_version=${DEB_VERSION}" >> $GITHUB_OUTPUT
       
-      - name: Build URH for ${{ matrix.arch }}
+      - name: Build for ${{ matrix.arch }}
         run: |
-          cat > build-urh.sh << 'BUILDSCRIPT'
+          cat > build.sh << 'BUILDSCRIPT'
           #!/bin/bash
           set -e
-          
           echo "=== Building URH for $(uname -m) ==="
           
           apt-get update
@@ -81,37 +60,32 @@ PYEOF
               libxml2-dev libxslt1-dev zlib1g-dev \
               dpkg-dev fakeroot git
           
-          # Copy workspace to writable location (Cython needs to write .cpp files)
-          echo "[+] Copying source to writable location"
           cp -r /workspace-ro /workspace
           cd /workspace
           
           URH_VENV_DIR="/opt/urh-venv"
           
-          echo "[+] Creating Python virtual environment"
+          echo "[+] Creating venv"
           python3 -m venv "$URH_VENV_DIR"
           source "$URH_VENV_DIR/bin/activate"
           
-          echo "[+] Installing dependencies"
+          echo "[+] Installing deps"
           pip install --upgrade pip setuptools wheel
           pip install cython numpy
           pip install --only-binary=all pyqt5
           pip install psutil
           
-          echo "[+] Building URH (attempt 1: with Cython extensions)"
+          echo "[+] Building URH"
           BUILD_TYPE="failed"
           if python3 setup.py install 2>&1 | tee /tmp/build.log; then
               if [ -f "$URH_VENV_DIR/bin/urh" ]; then
                   echo "[+] Build successful with native extensions"
                   BUILD_TYPE="native"
-              else
-                  echo "[!] Build reported success but urh not found"
-                  BUILD_TYPE="failed"
               fi
           fi
           
           if [ "$BUILD_TYPE" = "failed" ]; then
-              echo "[!] Cython build failed, retrying without native extensions"
+              echo "[!] Retrying without Cython"
               rm -rf build/ src/urh.egg-info/ "$URH_VENV_DIR"
               python3 -m venv "$URH_VENV_DIR"
               source "$URH_VENV_DIR/bin/activate"
@@ -126,32 +100,13 @@ PYEOF
           
           deactivate
           
-          # Verify installation
           if [ ! -f "$URH_VENV_DIR/bin/urh" ]; then
-              echo "[!] ERROR: URH not installed!"
-              ls -la "$URH_VENV_DIR/bin/" || true
+              echo "[!] ERROR: URH not installed"
               exit 1
           fi
           
-          echo "[+] URH installed successfully: $BUILD_TYPE extensions"
-          ls -la "$URH_VENV_DIR/bin/urh"
-          
-          echo "[+] Creating Debian package"
+          echo "[+] Creating package"
           ARCH=$(dpkg --print-architecture)
-          
-          # Extract version properly using Python heredoc
-          VERSION=$(python3 << 'PYVER'
-import re
-try:
-    with open('setup.py') as f:
-        content = f.read()
-    match = re.search(r'version\s*=\s*["\x27]([^"\x27]+)["\x27]', content)
-    print(match.group(1) if match else '2.9.8')
-except:
-    print('2.9.8')
-PYVER
-)
-          
           PKG_NAME="urh-penthertz_${ARCH}_${DEB_VERSION}"
           PKG_DIR="/tmp/pkg"
           
@@ -161,151 +116,82 @@ PYVER
           mkdir -p "${PKG_DIR}/usr/share/applications"
           mkdir -p "${PKG_DIR}/usr/share/doc/urh-penthertz"
           
-          echo "[+] Copying virtual environment"
           cp -a "$URH_VENV_DIR" "${PKG_DIR}/opt/"
           
-          echo "[+] Creating wrapper script"
           cat > "${PKG_DIR}/usr/sbin/urh" << 'WRAPPER'
           #!/bin/bash
           URH_VENV_DIR="/opt/urh-venv"
-          
           if [ ! -d "$URH_VENV_DIR" ]; then
-              echo "Error: URH virtual environment not found at $URH_VENV_DIR"
+              echo "Error: URH venv not found"
               exit 1
           fi
-          
-          if [ ! -f "$URH_VENV_DIR/bin/urh" ]; then
-              echo "Error: URH not found in virtual environment"
-              exit 1
-          fi
-          
           if [ -z "$XDG_RUNTIME_DIR" ]; then
               export XDG_RUNTIME_DIR="/tmp/runtime-$(whoami)"
               mkdir -p "$XDG_RUNTIME_DIR"
               chmod 700 "$XDG_RUNTIME_DIR"
           fi
-          
           source "$URH_VENV_DIR/bin/activate"
           exec "$URH_VENV_DIR/bin/urh" "$@"
           WRAPPER
           
           chmod +x "${PKG_DIR}/usr/sbin/urh"
           
-          echo "[+] Creating desktop entry"
           cat > "${PKG_DIR}/usr/share/applications/urh.desktop" << 'DESKTOP'
           [Desktop Entry]
           Type=Application
           Name=Universal Radio Hacker
-          GenericName=Wireless Protocol Analyzer
-          Comment=Investigate wireless protocols with URH
-          Exec=urh %F
+          Exec=urh
           Icon=urh
           Terminal=false
-          Categories=Network;Utility;Development;
-          MimeType=application/x-urh;
+          Categories=Network;
           DESKTOP
           
-          echo "[+] Creating control file"
           cat > "${PKG_DIR}/DEBIAN/control" << CONTROL
           Package: urh-penthertz
           Version: ${DEB_VERSION}
           Section: comm
           Priority: optional
           Architecture: ${ARCH}
-          Depends: python3-venv, python3 (>= 3.10), libxml2, libxslt1.1, zlib1g
-          Conflicts: urh
-          Provides: urh
-          Replaces: urh
+          Depends: python3-venv, python3
           Maintainer: PentHertz <contact@penthertz.com>
-          Description: Universal Radio Hacker (PentHertz/HydraSDR Fork)
-           URH is a complete suite for wireless protocol investigation with native
-           device support for Software Defined Radios.
-           .
-           This package contains URH in a self-contained Python virtual environment,
-           built from the PentHertz/HydraSDR fork.
-           .
-           Build type: ${BUILD_TYPE} extensions
-          Homepage: https://github.com/PentHertz/urh
+          Description: Universal Radio Hacker (PentHertz Fork)
+           URH built with ${BUILD_TYPE} extensions
           CONTROL
           
-          echo "[+] Creating copyright"
           cat > "${PKG_DIR}/usr/share/doc/urh-penthertz/copyright" << 'COPYRIGHT'
           Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
           Upstream-Name: urh
-          Upstream-Contact: PentHertz <contact@penthertz.com>
           Source: https://github.com/PentHertz/urh
-          
           Files: *
           Copyright: 2016-2024 Johannes Pohl and contributors
-                     2024 PentHertz
           License: GPL-3+
           COPYRIGHT
           
-          echo "[+] Building package"
           dpkg-deb --build "${PKG_DIR}" "/output/${PKG_NAME}.deb"
-          
-          echo "[+] Creating build info"
-          cat > "/output/BUILD_INFO_${ARCH}.txt" << BUILDINFO
-          URH Debian Package - Build Information
-          =======================================
-          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          Architecture: ${ARCH} ($(uname -m))
-          Version: ${DEB_VERSION}
-          Build Type: ${BUILD_TYPE} extensions
-          Method: Virtual environment (the way that works!)
-          
-          Package: ${PKG_NAME}.deb
-          Size: $(du -h "/output/${PKG_NAME}.deb" | cut -f1)
-          
-          Installation:
-            sudo dpkg -i ${PKG_NAME}.deb
-            sudo apt-get install -f  # If dependencies needed
-          BUILDINFO
           
           echo "=== Build Complete ==="
           ls -lh /output/
-          cat "/output/BUILD_INFO_${ARCH}.txt"
           BUILDSCRIPT
           
-          chmod +x build-urh.sh
-          
+          chmod +x build.sh
           mkdir -p output
+          
           docker run --rm \
             --platform "${{ steps.platform.outputs.platform }}" \
             -v "$(pwd):/workspace-ro:ro" \
-            -v "$(pwd)/build-urh.sh:/build.sh:ro" \
+            -v "$(pwd)/build.sh:/build.sh:ro" \
             -v "$(pwd)/output:/output" \
             -e DEB_VERSION="${{ steps.version.outputs.deb_version }}" \
             ubuntu:24.04 \
             bash /build.sh
       
-      - name: Upload package
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: urh-penthertz-${{ matrix.arch }}-${{ steps.version.outputs.deb_version }}
-          path: |
-            output/*.deb
-            output/BUILD_INFO_*.txt
+          name: urh-${{ matrix.arch }}-${{ steps.version.outputs.deb_version }}
+          path: output/*.deb
       
       - name: Show result
         run: |
-          echo "=== Build Complete for ${{ matrix.arch }} ==="
+          echo "Package built for ${{ matrix.arch }}"
           ls -lh output/
-          echo ""
-          cat output/BUILD_INFO_*.txt
-  
-  summary:
-    needs: build
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Build Summary
-        run: |
-          echo "=== Multi-Architecture Build Complete ==="
-          echo ""
-          echo "Packages built for:"
-          echo "  - amd64"
-          echo "  - arm64"
-          echo "  - riscv64"
-          echo ""
-          echo "Download packages from the 'Artifacts' section above"
