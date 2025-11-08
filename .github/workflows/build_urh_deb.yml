@@ -4,16 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       architectures:
-        description: 'Architectures to build (space-separated: amd64 arm64 riscv64)'
+        description: 'Architectures to build'
         required: false
         default: 'amd64 arm64'
+        type: string
 
 jobs:
   build-urh-packages:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: ${{ fromJson(format('["{0}"]', github.event.inputs.architectures || 'amd64 arm64')) }}
+        arch: [amd64, arm64]
       fail-fast: false
     
     steps:
