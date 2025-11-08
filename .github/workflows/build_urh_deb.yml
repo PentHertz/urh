@@ -137,57 +137,22 @@ jobs:
           URH_VENV_DIR="/opt/urh-venv"
           
           echo "[+] Creating venv"
-          ARCH=$(uname -m)
-          case "$ARCH" in
-              x86_64|amd64)
-                  # AMD64: Regular venv (PyQt5 will come from pip wheel)
-                  python3 -m venv "$URH_VENV_DIR"
-                  ;;
-              aarch64|arm64|riscv64)
-                  # ARM64/RISC-V: venv with system access (for system PyQt5)
-                  python3 -m venv "$URH_VENV_DIR" --system-site-packages
-                  ;;
-              *)
-                  # Unknown: use system access as fallback
-                  python3 -m venv "$URH_VENV_DIR" --system-site-packages
-                  ;;
-          esac
-          
+          python3 -m venv "$URH_VENV_DIR"
           source "$URH_VENV_DIR/bin/activate"
           
-          echo "[+] Installing deps"
+          echo "[+] Upgrading pip and installing build dependencies"
           pip install --upgrade pip setuptools wheel
-          pip install cython 'numpy<2.0'  # Pin to 1.x for Cython compatibility
+          
+          echo "[+] Installing Cython and NumPy"
+          pip install cython numpy
           
           echo "[+] Installing PyQt5"
-          ARCH=$(uname -m)
-          case "$ARCH" in
-              x86_64|amd64)
-                  # amd64: Use pip binary wheel
-                  pip install --only-binary=:all: pyqt5 || {
-                      echo "[!] No PyQt5 wheel, using system package"
-                      apt-get install -y python3-pyqt5
-                  }
-                  ;;
-              aarch64|arm64)
-                  # ARM64: Use system package (no wheels available, building is slow)
-                  echo "[+] Using system PyQt5 package for ARM64"
-                  apt-get install -y python3-pyqt5 python3-pyqt5.qtsvg
-                  ;;
-              riscv64)
-                  # RISC-V: Use system package
-                  echo "[+] Using system PyQt5 package for RISC-V"
-                  apt-get install -y python3-pyqt5 python3-pyqt5.qtsvg
-                  ;;
-              *)
-                  echo "[!] Unknown arch $ARCH, trying pip"
-                  pip install pyqt5 || apt-get install -y python3-pyqt5
-                  ;;
-          esac
+          pip install --only-binary=all pyqt5 || echo "[!] PyQt5 wheel not available, GUI may not work"
           
+          echo "[+] Installing psutil"
           pip install psutil
           
-          echo "[+] Building URH"
+          echo "[+] Building URH with native extensions"
           BUILD_TYPE="failed"
           if python3 setup.py install 2>&1 | tee /tmp/build.log; then
               if [ -f "$URH_VENV_DIR/bin/urh" ]; then
@@ -197,44 +162,13 @@ jobs:
           fi
           
           if [ "$BUILD_TYPE" = "failed" ]; then
-              echo "[!] Retrying without Cython"
-              rm -rf build/ src/urh.egg-info/ "$URH_VENV_DIR"
-              
-              ARCH=$(uname -m)
-              case "$ARCH" in
-                  x86_64|amd64)
-                      python3 -m venv "$URH_VENV_DIR"
-                      ;;
-                  aarch64|arm64|riscv64)
-                      python3 -m venv "$URH_VENV_DIR" --system-site-packages
-                      ;;
-                  *)
-                      python3 -m venv "$URH_VENV_DIR" --system-site-packages
-                      ;;
-              esac
-              
-              source "$URH_VENV_DIR/bin/activate"
-              pip install --upgrade pip setuptools wheel
-              pip install cython 'numpy<2.0'  # Pin to 1.x for Cython compatibility
-              
-              echo "[+] Installing PyQt5 (retry)"
-              ARCH=$(uname -m)
-              case "$ARCH" in
-                  x86_64|amd64)
-                      pip install --only-binary=:all: pyqt5 || apt-get install -y python3-pyqt5
-                      ;;
-                  aarch64|arm64|riscv64)
-                      apt-get install -y python3-pyqt5 python3-pyqt5.qtsvg
-                      ;;
-                  *)
-                      pip install pyqt5 || apt-get install -y python3-pyqt5
-                      ;;
-              esac
-              
-              pip install psutil
+              echo "[!] Cython build failed, trying without native extensions"
+              rm -rf build/ src/urh.egg-info/
               export URH_NO_NATIVE_EXTENSIONS=1
               python3 setup.py install
-              BUILD_TYPE="no-native"
+              if [ -f "$URH_VENV_DIR/bin/urh" ]; then
+                  BUILD_TYPE="no-native"
+              fi
           fi
           
           deactivate
