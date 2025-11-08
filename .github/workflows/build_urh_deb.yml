@@ -52,7 +52,8 @@ jobs:
       - name: Get version
         id: version
         run: |
-          VERSION=$(grep "version=" setup.py | head -1 | sed "s/.*version=['\"]\\([^'\"]*\\)['\"].*/\\1/" || echo "2.9.4")
+          # Extract version - try multiple patterns
+          VERSION=$(python3 -c "import re; content=open('setup.py').read(); match=re.search(r'version\s*=\s*[\"']([^\"']+)[\"']', content); print(match.group(1) if match else '2.9.8')")
           DATE=$(date +%Y%m%d)
           COMMIT=$(git rev-parse --short HEAD)
           DEB_VERSION="${VERSION}+git${DATE}.${COMMIT}"
@@ -130,6 +131,10 @@ jobs:
           
           echo "[+] Creating Debian package"
           ARCH=$(dpkg --print-architecture)
+          
+          # Extract version properly
+          VERSION=$(python3 -c "import re; content=open('setup.py').read(); match=re.search(r'version\s*=\s*[\"']([^\"']+)[\"']', content); print(match.group(1) if match else '2.9.8')" 2>/dev/null || echo "2.9.8")
+          
           PKG_NAME="urh-penthertz_${ARCH}_${DEB_VERSION}"
           PKG_DIR="/tmp/pkg"
           
