@@ -1,13 +1,25 @@
 name: Build URH Debian Packages (Simple Method)
 
 on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'src/**'
+      - 'setup.py'
+      - '.github/workflows/build-urh-rfswift.yml'
   workflow_dispatch:
     inputs:
-      architectures:
-        description: 'Architectures to build'
+      urh_branch:
+        description: 'URH branch to build'
         required: false
-        default: 'amd64 arm64'
-        type: string
+        default: 'master'
+      rfswift_tag:
+        description: 'RF Swift image tag'
+        required: false
+        default: 'sdrsa_devices'
+  schedule:
+    # Build weekly on Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
 
 jobs:
   build-urh-packages:
