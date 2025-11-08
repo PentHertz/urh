@@ -247,7 +247,7 @@ jobs:
           # When using PIP_NO_BUILD_ISOLATION, we need setuptools and numpy in the environment
           echo "=== Preparing Python environment ==="
           export PIP_NO_BUILD_ISOLATION=1
-          export SETUPTOOLS_USE_DISTUTILS=stdlib
+          # Note: Don't set SETUPTOOLS_USE_DISTUTILS=stdlib - distutils removed in Python 3.12
           
           # Install required packages via pip (already installed via apt, but need them accessible)
           pip3 install --break-system-packages setuptools wheel numpy || {
