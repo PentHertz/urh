@@ -73,8 +73,12 @@ jobs:
               libxml2-dev libxslt1-dev zlib1g-dev \
               dpkg-dev fakeroot git
           
-          URH_VENV_DIR="/opt/urh-venv"
+          # Copy workspace to writable location (Cython needs to write .cpp files)
+          echo "[+] Copying source to writable location"
+          cp -r /workspace-ro /workspace
           cd /workspace
+          
+          URH_VENV_DIR="/opt/urh-venv"
           
           echo "[+] Creating Python virtual environment"
           python3 -m venv "$URH_VENV_DIR"
@@ -87,11 +91,26 @@ jobs:
           pip install psutil
           
           echo "[+] Building URH (attempt 1: with Cython extensions)"
+          BUILD_TYPE="failed"
           if python3 setup.py install 2>&1 | tee /tmp/build.log; then
-              echo "[+] Build successful with native extensions"
-              BUILD_TYPE="native"
-          else
+              if [ -f "$URH_VENV_DIR/bin/urh" ]; then
+                  echo "[+] Build successful with native extensions"
+                  BUILD_TYPE="native"
+              else
+                  echo "[!] Build reported success but urh not found"
+                  BUILD_TYPE="failed"
+              fi
+          fi
+          
+          if [ "$BUILD_TYPE" = "failed" ]; then
               echo "[!] Cython build failed, retrying without native extensions"
+              rm -rf build/ src/urh.egg-info/ "$URH_VENV_DIR"
+              python3 -m venv "$URH_VENV_DIR"
+              source "$URH_VENV_DIR/bin/activate"
+              pip install --upgrade pip setuptools wheel
+              pip install cython numpy
+              pip install --only-binary=all pyqt5
+              pip install psutil
               export URH_NO_NATIVE_EXTENSIONS=1
               python3 setup.py install
               BUILD_TYPE="no-native"
@@ -99,7 +118,14 @@ jobs:
           
           deactivate
           
-          echo "[+] URH installed: $BUILD_TYPE extensions"
+          # Verify installation
+          if [ ! -f "$URH_VENV_DIR/bin/urh" ]; then
+              echo "[!] ERROR: URH not installed!"
+              ls -la "$URH_VENV_DIR/bin/" || true
+              exit 1
+          fi
+          
+          echo "[+] URH installed successfully: $BUILD_TYPE extensions"
           ls -la "$URH_VENV_DIR/bin/urh"
           
           echo "[+] Creating Debian package"
@@ -224,7 +250,7 @@ jobs:
           mkdir -p output
           docker run --rm \
             --platform "${{ steps.platform.outputs.platform }}" \
-            -v "$(pwd):/workspace:ro" \
+            -v "$(pwd):/workspace-ro:ro" \
             -v "$(pwd)/build-urh.sh:/build.sh:ro" \
             -v "$(pwd)/output:/output" \
             -e DEB_VERSION="${{ steps.version.outputs.deb_version }}" \
