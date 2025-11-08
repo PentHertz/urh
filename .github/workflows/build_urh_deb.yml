@@ -249,6 +249,9 @@ jobs:
           export PIP_NO_BUILD_ISOLATION=1
           # Note: Don't set SETUPTOOLS_USE_DISTUTILS=stdlib - distutils removed in Python 3.12
           
+          # Prevent setuptools from trying to install setup_requires packages
+          export SETUPTOOLS_INSTALL_SETUP_REQUIRES=0
+          
           # Force pip to work completely offline
           export PIP_NO_INDEX=1
           export PIP_NO_DEPENDENCIES=1
@@ -264,6 +267,9 @@ jobs:
           # Re-enable offline mode for build
           export PIP_NO_INDEX=1
           export PIP_NO_DEPENDENCIES=1
+          
+          # Make numpy available to setuptools
+          export PYTHONPATH="/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:${PYTHONPATH}"
           
           # Verify packages are available
           python3 -c "import setuptools; import numpy; print(f'setuptools: {setuptools.__version__}, numpy: {numpy.__version__}')"
