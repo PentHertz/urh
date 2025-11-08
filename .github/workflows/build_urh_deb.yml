@@ -232,7 +232,7 @@ jobs:
           Section: comm
           Priority: optional
           Architecture: ${ARCH}
-          Depends: python3-venv, python3, python3-pyqt5, librtlsdr0, libhackrf0, libairspy0, libiio0, liblimesuite20.10-1, libbladerf2, libuhd4.6.0
+          Depends: python3-venv, python3, python3-pyqt5
           Recommends: rtl-sdr, hackrf, limesuite, uhd-host, python3-pyqt5.qtsvg
           Maintainer: PentHertz <contact@penthertz.com>
           Description: Universal Radio Hacker (PentHertz Fork)
