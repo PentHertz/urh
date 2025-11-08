@@ -174,10 +174,7 @@ jobs:
            -- PentHertz <contact@penthertz.com>  $(date -R)
           EOF
           
-          # debian/compat
-          echo "13" > debian/compat
-          
-          # debian/source/format
+          # debian/source/format (no debian/compat needed - using debhelper-compat in control)
           echo "3.0 (quilt)" > debian/source/format
           
           # debian/copyright
