@@ -191,7 +191,7 @@ jobs:
           #    echo "[!] PyQt5 installation failed, GUI may not work"
           #    echo "[!] Users can manually install: apt install python3-pyqt5"
           #}
-          apt-get install python3-pyqt5 python3-pyqt5.qtopengl python3-pyqt5.qtsvg
+          apt-get install python3-pyqt5 python3-pyqt5.qtopengl python3-pyqt5.qtsvg -y
           
           echo "[+] Installing psutil"
           pip install psutil
