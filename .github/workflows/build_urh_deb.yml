@@ -387,8 +387,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.deb_version }}
-          name: URH PentHertz v${{ steps.version.outputs.deb_version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: URH PentHertz v${{ steps.version.outputs.version }}
           body: |
             # URH Multi-Architecture Packages
             
@@ -402,18 +402,34 @@ jobs:
             - `urh-penthertz_arm64_*.deb` - For ARM64/aarch64 systems  
             - `urh-penthertz_riscv64_*.deb` - For RISC-V 64-bit systems
             
-            ## 🚀 Installation
+            ## 🚀 Quick Download
             
             ```bash
-            # Download the appropriate package for your architecture
-            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.deb_version }}/urh-penthertz_ARCH_${{ steps.version.outputs.deb_version }}.deb
+            # AMD64
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/urh-penthertz_amd64_${{ steps.version.outputs.deb_version }}.deb
+            
+            # ARM64
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/urh-penthertz_arm64_${{ steps.version.outputs.deb_version }}.deb
+            
+            # RISC-V
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/urh-penthertz_riscv64_${{ steps.version.outputs.deb_version }}.deb
             
             # Install
-            sudo dpkg -i urh-penthertz_ARCH_*.deb
-            sudo apt-get install -f  # Fix dependencies if needed
+            sudo dpkg -i urh-penthertz_*.deb
+            sudo apt-get install -f
             
             # Run
             urh
+            ```
+            
+            ## 💡 Permanent Download URL
+            
+            This release always uses the tag **v${{ steps.version.outputs.version }}** for easy downloading.  
+            Just update the date+commit in the filename to get the latest build:
+            
+            ```bash
+            # URL pattern (only date+commit changes between builds):
+            https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/urh-penthertz_ARCH_VERSION.deb
             ```
             
             ## ✨ Features
@@ -432,7 +448,10 @@ jobs:
             ## 🔍 Verification
             
             ```bash
-            # Verify checksum
+            # Download checksums
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/SHA256SUMS
+            
+            # Verify
             sha256sum -c SHA256SUMS
             ```
             
