@@ -51,6 +51,10 @@ jobs:
           cat > build.sh << 'BUILDSCRIPT'
           #!/bin/bash
           set -e
+          
+          # Set library paths for all SDR libraries
+          export LD_LIBRARY_PATH="/usr/lib:/usr/local/lib:/opt/htraapi/lib/x86_64:/opt/htraapi/lib/aarch64:${LD_LIBRARY_PATH}"
+          
           echo "=== Building URH for $(uname -m) ==="
           
           apt-get update
@@ -118,11 +122,22 @@ jobs:
                   ln -sf libhtraapi.so.${VERSION} libhtraapi.so.${MAJOR}
                   ln -sf libhtraapi.so.${MAJOR} libhtraapi.so
                   
-                  # Copy to system paths
-                  cp libhtraapi.so* /usr/lib/
-                  cp /opt/htraapi/inc/htra_api.h /usr/include/
+                  # Copy to system paths with explicit names
+                  cp -v libhtraapi.so.${VERSION} /usr/lib/
+                  ln -sf /usr/lib/libhtraapi.so.${VERSION} /usr/lib/libhtraapi.so.${MAJOR}
+                  ln -sf /usr/lib/libhtraapi.so.${MAJOR} /usr/lib/libhtraapi.so
+                  
+                  # Copy header
+                  cp -v /opt/htraapi/inc/htra_api.h /usr/include/
+                  
+                  # Update linker cache
                   ldconfig
-                  echo "[+] Harogic HTRA API installed"
+                  
+                  # Verify installation
+                  echo "[+] Harogic HTRA API installed:"
+                  ls -l /usr/lib/libhtraapi.so*
+                  ls -l /usr/include/htra_api.h
+                  ldconfig -p | grep htraapi
               else
                   echo "[!] Harogic library files not found, skipping"
               fi
@@ -130,6 +145,23 @@ jobs:
           
           echo "[+] SDR libraries installed, checking what URH will detect:"
           ldconfig -p | grep -E "(rtlsdr|hackrf|airspy|iio|limesuite|bladerf|uhd|hydrasdr|htraapi)" || echo "Some libraries may not be visible yet"
+          
+          echo "[+] Updating linker cache before URH build"
+          ldconfig
+          
+          echo "[+] Verifying library availability:"
+          pkg-config --exists librtlsdr && echo "  ✓ RTL-SDR" || echo "  ✗ RTL-SDR"
+          pkg-config --exists libhackrf && echo "  ✓ HackRF" || echo "  ✗ HackRF"
+          pkg-config --exists libiio && echo "  ✓ PlutoSDR (libiio)" || echo "  ✗ PlutoSDR"
+          pkg-config --exists LimeSuite && echo "  ✓ LimeSDR" || echo "  ✗ LimeSDR"
+          pkg-config --exists libbladeRF && echo "  ✓ BladeRF" || echo "  ✗ BladeRF"
+          pkg-config --exists uhd && echo "  ✓ USRP (UHD)" || echo "  ✗ USRP"
+          ldconfig -p | grep -q libhydrasdr && echo "  ✓ HydraSDR" || echo "  ✗ HydraSDR"
+          ldconfig -p | grep -q libhtraapi && echo "  ✓ Harogic" || echo "  ✗ Harogic"
+          
+          echo "[+] Header files check:"
+          [ -f /usr/include/hydrasdr.h ] && echo "  ✓ hydrasdr.h" || echo "  ✗ hydrasdr.h"
+          [ -f /usr/include/htra_api.h ] && echo "  ✓ htra_api.h" || echo "  ✗ htra_api.h"
           
           cp -r /workspace-ro /workspace
           cd /workspace
@@ -155,6 +187,13 @@ jobs:
           
           echo "[+] Installing psutil"
           pip install psutil
+          
+          echo "[+] Pre-build library check (what setup.py will see):"
+          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
+          python3 -c "from ctypes.util import find_library; print('libhtraapi:', find_library('htraapi'))"
+          python3 -c "from ctypes.util import find_library; print('libhydrasdr:', find_library('hydrasdr'))"
+          python3 -c "from ctypes.util import find_library; print('librtlsdr:', find_library('rtlsdr'))"
+          python3 -c "from ctypes.util import find_library; print('libhackrf:', find_library('hackrf'))"
           
           echo "[+] Building URH with native extensions"
           BUILD_TYPE="failed"
@@ -236,7 +275,7 @@ jobs:
           Section: comm
           Priority: optional
           Architecture: ${ARCH}
-          Depends: python3-venv, python3
+          Depends: python3-venv, python3, librtlsdr0, libhackrf0, libairspy0, libiio0, liblimesuite20.10-1, libbladerf2, libuhd4.6.0, libqt5core5t64, libqt5gui5t64, libqt5widgets5t64
           Recommends: rtl-sdr, hackrf, limesuite, uhd-host
           Maintainer: PentHertz <contact@penthertz.com>
           Description: Universal Radio Hacker (PentHertz Fork)
