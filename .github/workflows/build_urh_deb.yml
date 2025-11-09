@@ -185,12 +185,13 @@ jobs:
           echo "[+] Installing Cython and NumPy"
           pip install cython numpy
           
-          #echo "[+] Installing PyQt5"
+          echo "[+] Installing PyQt5"
           # Allow building from source if no wheel available (for ARM64/RISC-V)
           #pip install pyqt5 || {
           #    echo "[!] PyQt5 installation failed, GUI may not work"
           #    echo "[!] Users can manually install: apt install python3-pyqt5"
           #}
+          apt-get install python3-pyqt5 python3-pyqt5.qtopengl python3-pyqt5.qtsvg
           
           echo "[+] Installing psutil"
           pip install psutil
