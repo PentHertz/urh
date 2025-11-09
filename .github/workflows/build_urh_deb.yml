@@ -89,6 +89,21 @@ jobs:
           ln -sf /usr/include/libhydrasdr/hydrasdr.h /usr/include/hydrasdr.h
           ln -sf /usr/include/libhydrasdr/hydrasdr_commands.h /usr/include/hydrasdr_commands.h
           
+          echo "[+] Installing FUNcube Dongle support"
+          cd /tmp
+          # Install dependencies for FUNcube
+          DEBIAN_FRONTEND=noninteractive apt-get install -y libusb-1.0-0-dev libasound2-dev
+          
+          # Clone and build libfcd (FUNcube Dongle library)
+          git clone https://github.com/glpatcern/libfcd.git funcube
+          cd funcube
+          mkdir -p build && cd build
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr
+          make -j$(nproc)
+          make install
+          ldconfig
+          echo "[+] FUNcube Dongle library installed"
+          
           echo "[+] Installing Harogic HTRA API"
           cd /tmp
           ARCH=$(uname -m)
@@ -157,10 +172,12 @@ jobs:
           pkg-config --exists libbladeRF && echo "  ✓ BladeRF" || echo "  ✗ BladeRF"
           pkg-config --exists uhd && echo "  ✓ USRP (UHD)" || echo "  ✗ USRP"
           ldconfig -p | grep -q libhydrasdr && echo "  ✓ HydraSDR" || echo "  ✗ HydraSDR"
+          ldconfig -p | grep -q libfcd && echo "  ✓ FUNcube Dongle" || echo "  ✗ FUNcube Dongle"
           ldconfig -p | grep -q libhtraapi && echo "  ✓ Harogic" || echo "  ✗ Harogic"
           
           echo "[+] Header files check:"
           [ -f /usr/include/hydrasdr.h ] && echo "  ✓ hydrasdr.h" || echo "  ✗ hydrasdr.h"
+          [ -f /usr/include/fcd.h ] && echo "  ✓ fcd.h (FUNcube)" || echo "  ✗ fcd.h"
           [ -f /usr/include/htra_api.h ] && echo "  ✓ htra_api.h" || echo "  ✗ htra_api.h"
           
           cp -r /workspace-ro /workspace
@@ -192,6 +209,7 @@ jobs:
           echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
           python3 -c "from ctypes.util import find_library; print('libhtraapi:', find_library('htraapi'))"
           python3 -c "from ctypes.util import find_library; print('libhydrasdr:', find_library('hydrasdr'))"
+          python3 -c "from ctypes.util import find_library; print('libfcd:', find_library('fcd'))"
           python3 -c "from ctypes.util import find_library; print('librtlsdr:', find_library('rtlsdr'))"
           python3 -c "from ctypes.util import find_library; print('libhackrf:', find_library('hackrf'))"
           
@@ -289,6 +307,7 @@ jobs:
             * LimeSDR
             * BladeRF (1.0, 2.0)
             * USRP (UHD)
+            * FUNcube Dongle
             * HydraSDR
             * Harogic spectrum analyzers
            .
@@ -434,7 +453,7 @@ jobs:
             
             ## ✨ Features
             
-            - **Native SDR Support:** RTL-SDR, HackRF, AirSpy, PlutoSDR, LimeSDR, BladeRF, USRP, HydraSDR, Harogic
+            - **Native SDR Support:** RTL-SDR, HackRF, AirSpy, PlutoSDR, LimeSDR, BladeRF, USRP, FUNcube Dongle, HydraSDR, Harogic
             - **Cython Extensions:** Optimized signal processing
             - **Complete GUI:** PyQt5 interface included
             - **Self-contained:** All dependencies in venv
