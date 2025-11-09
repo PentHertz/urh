@@ -90,19 +90,9 @@ jobs:
           ln -sf /usr/include/libhydrasdr/hydrasdr_commands.h /usr/include/hydrasdr_commands.h
           
           echo "[+] Installing FUNcube Dongle support"
-          cd /tmp
-          # Install dependencies for FUNcube
-          DEBIAN_FRONTEND=noninteractive apt-get install -y libusb-1.0-0-dev libasound2-dev
-          
-          # Clone and build libfcd (FUNcube Dongle library)
-          git clone https://github.com/glpatcern/libfcd.git funcube
-          cd funcube
-          mkdir -p build && cd build
-          cmake .. -DCMAKE_INSTALL_PREFIX=/usr
-          make -j$(nproc)
-          make install
-          ldconfig
-          echo "[+] FUNcube Dongle library installed"
+          DEBIAN_FRONTEND=noninteractive apt-get install -y libgnuradio-funcube3.10.0 qthid-fcd-controller || {
+              echo "[!] FUNcube packages not available in repos, skipping"
+          }
           
           echo "[+] Installing Harogic HTRA API"
           cd /tmp
