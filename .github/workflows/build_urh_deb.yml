@@ -173,13 +173,14 @@ jobs:
           cp -r /workspace-ro /workspace
           cd /workspace
 
-          PYTHON_VERSION=$(/opt/urh-venv/bin/python -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')")
-          cp -r /usr/lib/python3/dist-packages/PyQt5 /opt/urh-venv/lib/$PYTHON_VERSION/site-packages/ # little hack to use system PyQt5 lib
-          
           URH_VENV_DIR="/opt/urh-venv"
 
           echo "[+] Creating venv"
           python3 -m venv "$URH_VENV_DIR"
+
+          PYTHON_VERSION=$(/opt/urh-venv/bin/python -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')")
+          ln -s /usr/lib/python3/dist-packages/PyQt5 /opt/urh-venv/lib/$PYTHON_VERSION/site-packages/ # little hack to use system PyQt5 lib
+
           source "$URH_VENV_DIR/bin/activate"
           
           echo "[+] Upgrading pip and installing build dependencies"
